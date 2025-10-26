@@ -12,8 +12,8 @@ type ChatMessage = {
 }
 
 // Incrementally extract complete JSON objects from a growing buffer.
-function extractJsonObjectsFromBuffer(buffer: string): { objects: any[]; rest: string } {
-  const objects: any[] = []
+function extractJsonObjectsFromBuffer(buffer: string): { objects: unknown[]; rest: string } {
+  const objects: unknown[] = []
   let depth = 0
   let inString = false
   let escape = false
@@ -42,7 +42,7 @@ function extractJsonObjectsFromBuffer(buffer: string): { objects: any[]; rest: s
       if (depth === 0 && start !== -1) {
         const jsonStr = buffer.slice(start, i + 1)
         try {
-          const obj = JSON.parse(jsonStr)
+          const obj: unknown = JSON.parse(jsonStr)
           objects.push(obj)
         } catch {
           // ignore parse errors; keep bytes in rest
@@ -56,15 +56,31 @@ function extractJsonObjectsFromBuffer(buffer: string): { objects: any[]; rest: s
   return { objects, rest }
 }
 
+function isStreamItem(obj: unknown): obj is { type?: string; content?: unknown } {
+  return typeof obj === 'object' && obj !== null
+}
+
+/**
+ * AIAgentChatV6
+ *
+ * High-level responsibilities:
+ * - Expose inspector-controlled props to Retool (endpoint/method/headers/etc.)
+ * - Render chat UI (Header → Messages scroller → Composer)
+ * - Send messages to a bound HTTP endpoint with optional streaming support
+ * - Keep the component border inset to avoid scrollbars in Retool containers
+ */
 export const AIAgentChatV6: FC = () => {
+  // Sets the default grid size when dragged onto the Retool canvas
   Retool.useComponentSettings({ defaultWidth: 8, defaultHeight: 16 })
 
+  // Inspector: URL of your HTTP endpoint. Required to enable sending.
   const [endpointUrl] = Retool.useStateString({
     name: 'endpointUrl',
     label: 'Endpoint URL',
     inspector: 'text'
   })
 
+  // Inspector: HTTP method for requests (POST or GET)
   const [requestMethod] = Retool.useStateEnumeration({
     name: 'requestMethod',
     enumDefinition: ['POST', 'GET'],
@@ -73,11 +89,13 @@ export const AIAgentChatV6: FC = () => {
     label: 'Method'
   })
 
+  // Inspector (hidden): arbitrary request headers supplied from Retool
   const [requestHeaders] = Retool.useStateObject({
     name: 'requestHeaders',
     inspector: 'hidden'
   })
 
+  // Inspector: key to read the assistant reply from in JSON responses
   const [responseKey] = Retool.useStateString({
     name: 'responseKey',
     label: 'Response Key',
@@ -85,6 +103,7 @@ export const AIAgentChatV6: FC = () => {
     initialValue: 'reply'
   })
 
+  // Inspector: streaming mode — 'sse' for Server-Sent Events, 'auto' for best-effort
   const [streamingMode] = Retool.useStateEnumeration({
     name: 'streamingMode',
     enumDefinition: ['none', 'sse', 'auto'],
@@ -93,6 +112,7 @@ export const AIAgentChatV6: FC = () => {
     label: 'Streaming'
   })
 
+  // Inspector: whether to render assistant messages using markdown
   const [renderMarkdown] = Retool.useStateBoolean({
     name: 'renderMarkdown',
     label: 'Render Markdown',
@@ -100,15 +120,26 @@ export const AIAgentChatV6: FC = () => {
     initialValue: true
   })
 
+  // Inspector: optionally display the header bar at the top of the chat
+  const [showHeader] = Retool.useStateBoolean({
+    name: 'headerVisible',
+    label: 'Show Header',
+    inspector: 'checkbox',
+    initialValue: true
+  })
+
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isSending, setIsSending] = useState(false)
+  // Keeps a handle to the scroll container so we can auto-scroll to bottom
   const scrollRef = useRef<HTMLDivElement | null>(null)
 
   const canSend = useMemo(() => {
     return Boolean(endpointUrl && input.trim().length > 0 && !isSending)
   }, [endpointUrl, input, isSending])
 
+  // Sends the user prompt to the configured endpoint and appends the reply.
+  // Supports: SSE streams, raw chunked text/JSON frames, and plain JSON/text.
   const onSend = async () => {
     if (!endpointUrl || input.trim().length === 0 || isSending) return
 
@@ -146,6 +177,7 @@ export const AIAgentChatV6: FC = () => {
         fetchInit.body = JSON.stringify(payload)
       }
 
+      // STREAMING PATHS -----------------------------------------------------
       if (streamingMode === 'sse' || streamingMode === 'auto') {
         if (streamingMode === 'sse') headers['Accept'] = 'text/event-stream'
         const assistantMsg: ChatMessage = { id: `${Date.now()}-a`, role: 'assistant', content: '' }
@@ -154,6 +186,7 @@ export const AIAgentChatV6: FC = () => {
         if (!res.ok) throw new Error(`Stream request failed (${res.status})`)
         const ct = res.headers.get('content-type') || ''
         if (ct.includes('text/event-stream')) {
+          // Strict SSE format: parse "data:" lines and append to the assistant message
           if (!res.body) throw new Error('No stream body')
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
@@ -180,7 +213,7 @@ export const AIAgentChatV6: FC = () => {
             })
           }
         } else if (res.body) {
-          // Fallback: raw chunked stream (handle JSON-framed chunks from n8n or plain text)
+          // Fallback: raw chunked stream (e.g., JSON-framed pieces like { type: 'item', content })
           const reader = res.body.getReader()
           const decoder = new TextDecoder()
           let buffer = ''
@@ -193,7 +226,7 @@ export const AIAgentChatV6: FC = () => {
             buffer = rest
             if (objects.length > 0) {
               for (const obj of objects) {
-                if (obj && obj.type === 'item' && typeof obj.content === 'string') {
+                if (isStreamItem(obj) && obj && obj.type === 'item' && typeof obj.content === 'string') {
                   const piece = obj.content
                   setMessages(prev => prev.map(m => m.id === assistantMsg.id ? { ...m, content: m.content + piece } : m))
                 }
@@ -207,11 +240,12 @@ export const AIAgentChatV6: FC = () => {
             })
           }
         } else {
-          // No stream body, fall back to text
+          // No stream body; fall back to reading entire text
           const txt = await res.text()
           setMessages(prev => prev.map(m => m.id === assistantMsg.id ? { ...m, content: txt } : m))
         }
       } else {
+        // NON-STREAMING PATH -----------------------------------------------
         const res = await fetch(url, fetchInit)
         if (!res.ok) {
           throw new Error(`Request failed (${res.status})`)
@@ -219,9 +253,9 @@ export const AIAgentChatV6: FC = () => {
         const ct = res.headers.get('content-type') || ''
         let replyText = ''
         if (ct.includes('application/json')) {
-          const data = await res.json().catch(() => ({})) as Record<string, unknown>
+          const data = await res.json().catch(() => ({} as Record<string, unknown>))
           const key = responseKey && typeof responseKey === 'string' ? responseKey : 'reply'
-          const replyVal = data ? (data as any)[key] : undefined
+          const replyVal = data ? (data as Record<string, unknown>)[key] : undefined
           replyText = typeof replyVal === 'string' ? replyVal : ''
         } else {
           replyText = await res.text().catch(() => '')
@@ -242,79 +276,91 @@ export const AIAgentChatV6: FC = () => {
       setMessages(prev => [...prev, assistantMsg])
     } finally {
       setIsSending(false)
-      // scroll to bottom
+      // Scroll to bottom after each request completes
       requestAnimationFrame(() => {
         scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
       })
     }
   }
-
+  // UI LAYOUT ---------------------------------------------------------------
+  // Outer wrapper: insets the card border to avoid container overflow
   return (
-    <div style={{
-      display: 'flex', flexDirection: 'column', height: '100%', width: '100%',
-      fontFamily: 'Inter, system-ui, Arial, sans-serif',
-      border: '1px solid #e5e7eb', borderRadius: 8, overflow: 'hidden'
-    }}>
-      <div style={{ padding: 12, borderBottom: '1px solid #e5e7eb', background: '#fafafa' }}>
-        <div style={{ fontSize: 14, fontWeight: 600 }}>AI Agent Chat (v6)</div>
-        <div style={{ fontSize: 12, color: '#6b7280' }}>Endpoint bound in Inspector</div>
-      </div>
-
-      <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: 12, background: '#ffffff' }}>
-        {messages.length === 0 ? (
-          <div style={{ color: '#9ca3af', fontSize: 14 }}>No messages yet. Type a prompt below.</div>
-        ) : (
-          messages.map(m => (
-            <div key={m.id} style={{
-              display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8
-            }}>
-              {m.role === 'assistant' && renderMarkdown ? (
-                <div
-                  style={{
-                    maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
-                    background: '#f3f4f6', color: '#111827',
-                    fontSize: 14, lineHeight: '20px', wordBreak: 'break-word'
-                  }}
-                  className="ai-markdown"
-                  dangerouslySetInnerHTML={{
-                    __html: DOMPurify.sanitize(String(marked.parse(m.content || ''))) || ''
-                  }}
-                />
-              ) : (
-                <div style={{
-                  maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
-                  background: m.role === 'user' ? '#2563eb' : '#f3f4f6',
-                  color: m.role === 'user' ? '#ffffff' : '#111827',
-                  fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
-                }}>{m.content}</div>
-              )}
-            </div>
-          ))
+    <div style={{ height: '100%', width: '100%', boxSizing: 'border-box', padding: 8, overflow: 'hidden' }}>
+      {/* Card container (visible border) */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', height: '100%', width: '100%', maxHeight: '100%', maxWidth: '100%',
+        minHeight: 10, boxSizing: 'border-box',
+        fontFamily: 'Inter, system-ui, Arial, sans-serif',
+        border: '2px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#ffffff'
+      }}>
+        {/* Header */}
+        {showHeader && (
+          <div style={{ padding: 14, borderBottom: '2px solid #e5e7eb', background: '#fafafa' }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>AI Agent Chat (v6)</div>
+            <div style={{ fontSize: 12, color: '#6b7280' }}>Endpoint bound in Inspector</div>
+          </div>
         )}
-      </div>
 
-      <div style={{ padding: 12, borderTop: '1px solid #e5e7eb', background: '#fafafa' }}>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') onSend() }}
-            placeholder={endpointUrl ? 'Type a message…' : 'Set Endpoint URL in Inspector'}
-            style={{
-              flex: 1, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8,
-              outline: 'none', fontSize: 14
-            }}
-            disabled={!endpointUrl || isSending}
-          />
-          <button
-            onClick={onSend}
-            disabled={!canSend}
-            style={{
-              padding: '10px 14px', borderRadius: 8, border: '1px solid transparent',
-              background: canSend ? '#111827' : '#9ca3af', color: '#ffffff', fontSize: 14,
-              cursor: canSend ? 'pointer' : 'not-allowed'
-            }}
-          >Send</button>
+        {/* Messages scroller */}
+        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: 14, background: '#ffffff' }}>
+          {messages.length === 0 ? (
+            <div style={{ color: '#9ca3af', fontSize: 14 }}>No messages yet. Type a prompt below.</div>
+          ) : (
+            messages.map(m => (
+              <div key={m.id} style={{
+                display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 8
+              }}>
+                {m.role === 'assistant' && renderMarkdown ? (
+                  // Assistant (markdown rendered and sanitized)
+                  <div
+                    style={{
+                      maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
+                      background: '#f3f4f6', color: '#111827',
+                      fontSize: 14, lineHeight: '20px', wordBreak: 'break-word'
+                    }}
+                    className="ai-markdown"
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(String(marked.parse(m.content || ''))) || ''
+                    }}
+                  />
+                ) : (
+                  // User or non-markdown assistant bubble
+                  <div style={{
+                    maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
+                    background: m.role === 'user' ? '#2563eb' : '#f3f4f6',
+                    color: m.role === 'user' ? '#ffffff' : '#111827',
+                    fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                  }}>{m.content}</div>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Composer */}
+        <div style={{ padding: 14, borderTop: '1px solid #e5e7eb', background: '#fafafa' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') onSend() }}
+              placeholder={endpointUrl ? 'Type a message…' : 'Set Endpoint URL in Inspector'}
+              style={{
+                flex: 1, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8,
+                outline: 'none', fontSize: 14
+              }}
+              disabled={!endpointUrl || isSending}
+            />
+            <button
+              onClick={onSend}
+              disabled={!canSend}
+              style={{
+                padding: '10px 14px', borderRadius: 8, border: '1px solid transparent',
+                background: canSend ? '#111827' : '#9ca3af', color: '#ffffff', fontSize: 14,
+                cursor: canSend ? 'pointer' : 'not-allowed'
+              }}
+            >Send</button>
+          </div>
         </div>
       </div>
     </div>
