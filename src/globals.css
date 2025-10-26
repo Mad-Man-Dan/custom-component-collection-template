@@ -1,0 +1,86 @@
+/* Optional: Streamdown source (if supported by your build chain) */
+@supports selector(:is(*)) {
+  /* If your bundler supports this directive per AI Elements docs */
+  /* @source "../node_modules/streamdown/dist/index.js"; */
+}
+
+/* Markdown styling similar to shadcn/Streamdown defaults */
+.ai-markdown {
+  --ai-muted: #6b7280;
+  --ai-border: #e5e7eb;
+  --ai-bg: #f9fafb;
+  --ai-code-bg: #111827;
+  --ai-code-fg: #f3f4f6;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4,
+.ai-markdown h5,
+.ai-markdown h6 {
+  margin: 0.75rem 0 0.5rem;
+  font-weight: 600;
+}
+
+.ai-markdown p {
+  margin: 0.5rem 0;
+}
+
+.ai-markdown a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.ai-markdown ul,
+.ai-markdown ol {
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+
+.ai-markdown code {
+  background: var(--ai-bg);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-markdown pre {
+  background: var(--ai-code-bg);
+  color: var(--ai-code-fg);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  overflow: auto;
+}
+
+.ai-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.ai-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+}
+
+.ai-markdown th,
+.ai-markdown td {
+  border: 1px solid var(--ai-border);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.ai-markdown th {
+  background: var(--ai-bg);
+  font-weight: 600;
+}
+
+.ai-markdown blockquote {
+  border-left: 3px solid var(--ai-border);
+  padding-left: 0.75rem;
+  color: var(--ai-muted);
+  margin: 0.75rem 0;
+}
+
+
