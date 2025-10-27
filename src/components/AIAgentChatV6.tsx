@@ -117,7 +117,7 @@ export const AIAgentChatV6: FC = () => {
     name: 'renderMarkdown',
     label: 'Render Markdown',
     inspector: 'checkbox',
-    initialValue: true
+    initialValue: false
   })
 
   // Inspector: optionally display the header bar at the top of the chat
@@ -126,6 +126,112 @@ export const AIAgentChatV6: FC = () => {
     label: 'Show Header',
     inspector: 'checkbox',
     initialValue: true
+  })
+
+  // THEME AND COLOR CUSTOMIZATION -------------------------------------------
+  // Theme mode that can be bound to Retool theme (e.g., {{ theme.mode }})
+  const [themeMode, setThemeMode] = Retool.useStateEnumeration({
+    name: 'themeMode',
+    enumDefinition: ['Light', 'Dark'],
+    initialValue: 'Light',
+    inspector: 'segmented',
+    label: 'Theme Mode',
+    description: "Choose Light/Dark, or bind a variable like {{ theme.mode }}"
+  })
+
+  // Optional: bind a Retool variable for theme mode (overrides manual selection when provided)
+  const [themeModeBinding] = Retool.useStateString({
+    name: 'themeModeBinding',
+    label: 'Theme Mode Variable',
+    inspector: 'text',
+    description: "Bind a variable that resolves to 'Light' or 'Dark' (e.g., {{ theme.mode }})"
+  })
+
+  // Chat background colors (light/dark)
+  const [chatBackgroundLight, setChatBackgroundLight] = Retool.useStateString({
+    name: 'chatBackgroundLight',
+    label: 'Light — Chat Background',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #ffffff or {{ colors.bgLight }})',
+    initialValue: '#ffffff'
+  })
+  const [chatBackgroundDark, setChatBackgroundDark] = Retool.useStateString({
+    name: 'chatBackgroundDark',
+    label: 'Dark — Chat Background',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #111827 or {{ colors.bgDark }})',
+    initialValue: '#111827'
+  })
+
+  // Input border colors (light/dark)
+  const [inputBorderColorLight, setInputBorderColorLight] = Retool.useStateString({
+    name: 'inputBorderColorLight',
+    label: 'Light — Input Border',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #e5e7eb or {{ colors.borderLight }})',
+    initialValue: '#e5e7eb'
+  })
+  const [inputBorderColorDark, setInputBorderColorDark] = Retool.useStateString({
+    name: 'inputBorderColorDark',
+    label: 'Dark — Input Border',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #374151 or {{ colors.borderDark }})',
+    initialValue: '#374151'
+  })
+
+  // Send button colors (light/dark)
+  const [sendButtonColorLight, setSendButtonColorLight] = Retool.useStateString({
+    name: 'sendButtonColorLight',
+    label: 'Light — Send Button',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #111827 or {{ colors.primaryLight }})',
+    initialValue: '#111827'
+  })
+  const [sendButtonColorDark, setSendButtonColorDark] = Retool.useStateString({
+    name: 'sendButtonColorDark',
+    label: 'Dark — Send Button',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #2563eb or {{ colors.primaryDark }})',
+    initialValue: '#2563eb'
+  })
+
+  // Message bubble background colors (user/AI) for light/dark
+  const [userBubbleColorLight, setUserBubbleColorLight] = Retool.useStateString({
+    name: 'userBubbleColorLight',
+    label: 'Light — User Bubble',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #2563eb or {{ colors.userBubbleLight }})',
+    initialValue: '#2563eb'
+  })
+  const [userBubbleColorDark, setUserBubbleColorDark] = Retool.useStateString({
+    name: 'userBubbleColorDark',
+    label: 'Dark — User Bubble',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #2563eb or {{ colors.userBubbleDark }})',
+    initialValue: '#2563eb'
+  })
+  const [aiBubbleColorLight, setAiBubbleColorLight] = Retool.useStateString({
+    name: 'aiBubbleColorLight',
+    label: 'Light — AI Bubble',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #f3f4f6 or {{ colors.aiBubbleLight }})',
+    initialValue: '#f3f4f6'
+  })
+  const [aiBubbleColorDark, setAiBubbleColorDark] = Retool.useStateString({
+    name: 'aiBubbleColorDark',
+    label: 'Dark — AI Bubble',
+    inspector: 'text',
+    description: 'CSS color or formula (e.g., #1f2937 or {{ colors.aiBubbleDark }})',
+    initialValue: '#1f2937'
+  })
+
+  // Optional in-canvas Theme Editor for quick color picking
+  const [showThemeEditor] = Retool.useStateBoolean({
+    name: 'showThemeEditor',
+    label: 'Show Theme Editor',
+    inspector: 'checkbox',
+    description: 'Displays an inline color picker panel inside the component',
+    initialValue: false
   })
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -137,6 +243,23 @@ export const AIAgentChatV6: FC = () => {
   const canSend = useMemo(() => {
     return Boolean(endpointUrl && input.trim().length > 0 && !isSending)
   }, [endpointUrl, input, isSending])
+
+  // Resolved colors based on theme mode
+  const modeCandidate = (themeModeBinding && typeof themeModeBinding === 'string') ? themeModeBinding : themeMode
+  const isDark = String(modeCandidate).toLowerCase() === 'dark'
+  const chatBackground = isDark ? (chatBackgroundDark || '#111827') : (chatBackgroundLight || '#ffffff')
+  const inputBorderColor = isDark ? (inputBorderColorDark || '#374151') : (inputBorderColorLight || '#e5e7eb')
+  const sendButtonColor = isDark ? (sendButtonColorDark || '#2563eb') : (sendButtonColorLight || '#111827')
+  const userBubbleBg = isDark ? (userBubbleColorDark || '#2563eb') : (userBubbleColorLight || '#2563eb')
+  const aiBubbleBg = isDark ? (aiBubbleColorDark || '#1f2937') : (aiBubbleColorLight || '#f3f4f6')
+  const assistantTextColor = isDark ? '#e5e7eb' : '#111827'
+  const emptyStateText = isDark ? '#9ca3af' : '#9ca3af'
+
+  // Helpers for color inputs (fallback to a valid hex when current value is a formula)
+  const ensureHex = (value: string, fallback: string) => {
+    const v = String(value || '').trim()
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(v) ? v : fallback
+  }
 
   // Sends the user prompt to the configured endpoint and appends the reply.
   // Supports: SSE streams, raw chunked text/JSON frames, and plain JSON/text.
@@ -291,20 +414,93 @@ export const AIAgentChatV6: FC = () => {
         display: 'flex', flexDirection: 'column', height: '100%', width: '100%', maxHeight: '100%', maxWidth: '100%',
         minHeight: 10, boxSizing: 'border-box',
         fontFamily: 'Inter, system-ui, Arial, sans-serif',
-        border: '2px solid #e5e7eb', borderRadius: 4, overflow: 'hidden', background: '#ffffff'
+        border: `2px solid ${inputBorderColor}`, borderRadius: 4, overflow: 'hidden', background: chatBackground
       }}>
         {/* Header */}
         {showHeader && (
-          <div style={{ padding: 14, borderBottom: '2px solid #e5e7eb', background: '#fafafa' }}>
+          <div style={{ padding: 14, borderBottom: `2px solid ${inputBorderColor}`, background: chatBackground }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>AI Agent Chat (v6)</div>
             <div style={{ fontSize: 12, color: '#6b7280' }}>Endpoint bound in Inspector</div>
           </div>
         )}
 
+        {/* Optional Theme Editor panel ------------------------------------------------ */}
+        {showThemeEditor && (
+          <div style={{ padding: 12, borderBottom: `1px solid ${inputBorderColor}`, background: chatBackground }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Theme Colors</div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {/* Theme mode quick toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>Preview mode:</span>
+                <div style={{ display: 'inline-flex', border: `1px solid ${inputBorderColor}`, borderRadius: 6, overflow: 'hidden' }}>
+                  <button
+                    onClick={() => setThemeMode('Light')}
+                    style={{ padding: '4px 8px', background: !isDark ? sendButtonColor : 'transparent', color: !isDark ? '#fff' : assistantTextColor, border: 'none' }}
+                  >Light</button>
+                  <button
+                    onClick={() => setThemeMode('Dark')}
+                    style={{ padding: '4px 8px', background: isDark ? sendButtonColor : 'transparent', color: isDark ? '#fff' : assistantTextColor, border: 'none' }}
+                  >Dark</button>
+                </div>
+              </div>
+
+              {/* Light group */}
+              <div style={{ minWidth: 260 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Light</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Chat Background</label>
+                  <input type="color" value={ensureHex(chatBackgroundLight, '#ffffff')} onChange={e => setChatBackgroundLight(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Input Border</label>
+                  <input type="color" value={ensureHex(inputBorderColorLight, '#e5e7eb')} onChange={e => setInputBorderColorLight(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Send Button</label>
+                  <input type="color" value={ensureHex(sendButtonColorLight, '#111827')} onChange={e => setSendButtonColorLight(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>User Bubble</label>
+                  <input type="color" value={ensureHex(userBubbleColorLight, '#2563eb')} onChange={e => setUserBubbleColorLight(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>AI Bubble</label>
+                  <input type="color" value={ensureHex(aiBubbleColorLight, '#f3f4f6')} onChange={e => setAiBubbleColorLight(e.target.value)} />
+                </div>
+              </div>
+
+              {/* Dark group */}
+              <div style={{ minWidth: 260 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Dark</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Chat Background</label>
+                  <input type="color" value={ensureHex(chatBackgroundDark, '#111827')} onChange={e => setChatBackgroundDark(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Input Border</label>
+                  <input type="color" value={ensureHex(inputBorderColorDark, '#374151')} onChange={e => setInputBorderColorDark(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>Send Button</label>
+                  <input type="color" value={ensureHex(sendButtonColorDark, '#2563eb')} onChange={e => setSendButtonColorDark(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <label style={{ fontSize: 12 }}>User Bubble</label>
+                  <input type="color" value={ensureHex(userBubbleColorDark, '#2563eb')} onChange={e => setUserBubbleColorDark(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', alignItems: 'center', gap: 8 }}>
+                  <label style={{ fontSize: 12 }}>AI Bubble</label>
+                  <input type="color" value={ensureHex(aiBubbleColorDark, '#1f2937')} onChange={e => setAiBubbleColorDark(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Messages scroller */}
-        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: 14, background: '#ffffff' }}>
+        <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: 14, background: chatBackground }}>
           {messages.length === 0 ? (
-            <div style={{ color: '#9ca3af', fontSize: 14 }}>No messages yet. Type a prompt below.</div>
+            <div style={{ color: emptyStateText, fontSize: 14 }}>No messages yet. Type a prompt below.</div>
           ) : (
             messages.map(m => (
               <div key={m.id} style={{
@@ -315,7 +511,7 @@ export const AIAgentChatV6: FC = () => {
                   <div
                     style={{
                       maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
-                      background: '#f3f4f6', color: '#111827',
+                      background: aiBubbleBg, color: assistantTextColor,
                       fontSize: 14, lineHeight: '20px', wordBreak: 'break-word'
                     }}
                     className="ai-markdown"
@@ -327,8 +523,8 @@ export const AIAgentChatV6: FC = () => {
                   // User or non-markdown assistant bubble
                   <div style={{
                     maxWidth: '80%', padding: '8px 12px', borderRadius: 12,
-                    background: m.role === 'user' ? '#2563eb' : '#f3f4f6',
-                    color: m.role === 'user' ? '#ffffff' : '#111827',
+                    background: m.role === 'user' ? userBubbleBg : aiBubbleBg,
+                    color: m.role === 'user' ? '#ffffff' : assistantTextColor,
                     fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
                   }}>{m.content}</div>
                 )}
@@ -338,7 +534,7 @@ export const AIAgentChatV6: FC = () => {
         </div>
 
         {/* Composer */}
-        <div style={{ padding: 14, borderTop: '1px solid #e5e7eb', background: '#fafafa' }}>
+        <div style={{ padding: 14, borderTop: `1px solid ${inputBorderColor}`, background: chatBackground }}>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
               value={input}
@@ -346,7 +542,7 @@ export const AIAgentChatV6: FC = () => {
               onKeyDown={e => { if (e.key === 'Enter') onSend() }}
               placeholder={endpointUrl ? 'Type a message…' : 'Set Endpoint URL in Inspector'}
               style={{
-                flex: 1, padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: 8,
+                flex: 1, padding: '10px 12px', border: `1px solid ${inputBorderColor}`, borderRadius: 8,
                 outline: 'none', fontSize: 14
               }}
               disabled={!endpointUrl || isSending}
@@ -356,7 +552,7 @@ export const AIAgentChatV6: FC = () => {
               disabled={!canSend}
               style={{
                 padding: '10px 14px', borderRadius: 8, border: '1px solid transparent',
-                background: canSend ? '#111827' : '#9ca3af', color: '#ffffff', fontSize: 14,
+                background: canSend ? sendButtonColor : '#9ca3af', color: '#ffffff', fontSize: 14,
                 cursor: canSend ? 'pointer' : 'not-allowed'
               }}
             >Send</button>
